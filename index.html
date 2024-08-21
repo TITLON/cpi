@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta name="twitter:card" content="summary_large_image">
+	<meta name="twitter:site" content="@espensirnes">  <!-- Optional: your site's Twitter handle -->
+	<meta name="twitter:title" content="KPI tolvmånedersendring">  <!-- A brief title for the content/website -->
+	<meta name="twitter:description" content="KPI">
+	<meta name="twitter:image" content="https://titlon.uit.no/cpi/cpi.png">
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KPI tolvmånedersendring- kjerneinflasjon (KPI-JAE sesongjustert)</title>
+    <!-- Include Plotly.js library -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+	<style>
+        /* Ensure no margins or padding */
+        body, html {
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Styling for the container holding the two divs */
+        .container {
+            display: flex;  /* Use Flexbox to place divs side by side */
+            max-width: 800px;  /* Set max width */
+            margin: 0;
+        }
+
+        /* Style for the div that links to index.html */
+        .link-div {
+            flex: 1;  /* Occupy half the available space */
+            height: 50px;
+            background-color: #e0e4e2 ;  /* Example background color */
+            cursor: pointer;  /* Change cursor to hand pointer on hover */
+        }
+
+        .link-div:hover {
+            opacity: 0.8;  /* Slight fade on hover for a touch of interactivity */
+        }
+
+        /* Style for the other div */
+        .other-div {
+            flex: 1;  /* Occupy half the available space */
+            height: 50px;
+            background-color: #a89edf;  /* Example background color */
+        }
+		.link-div, .other-div {
+			/* ... other styles ... */
+
+			/* Use Flexbox for centering */
+			display: flex;
+			align-items: center; /* Centers vertically */
+			justify-content: center; /* Centers horizontally */
+
+			/* Style for the text */
+			font-family: Arial, sans-serif; /* Use Arial as the font */
+			font-size: 20px; /* Example font size */
+			color: white; /* Font color (change if needed) */
+		}
+    </style>
+</head>
+<body>
+	<div class="container">
+        <!-- The div that links to index.html -->
+        <div class="link-div" onclick="location.href='https://titlon.uit.no/cpi';">Totalindeks</div>
+        <!-- The other div -->
+        <div class="other-div">Kjerneinflasjon</div>
+    </div>
+
+<!-- Container for the plot -->
+
+
+
+<div id="plotContainer" style="max-width:800px;"></div>
+<p style="font-family: 'Arial';">Startår:&nbsp&nbsp&nbsp<input type="range" min="1978" max="2023" value="" class="slider" id="dateSlider">
+<label id="sliderLabel"></label></p>
+<div id="dataTableContainer" style="max-width:800px;"></div>
+<a href="https://www.ssb.no/statbank/table/06444" style="font-family: 'Arial'; color: darkblue; text-decoration: none;">Kilde: SSB</a>
+
+<!-- JavaScript -->
+<script>
+	//Sets initial from year to display:
+	const currentYear = new Date().getFullYear();
+    const desiredYear = currentYear - 2;
+
+    // Set the value of the input range and the label to the calculated year.
+    document.getElementById('dateSlider').value = desiredYear;
+    document.getElementById('sliderLabel').textContent = desiredYear;
+
+    // Define the URL and JSON-query
+		const url = "https://data.ssb.no/api/v0/no/table/06444/";
+		const jsonQuery = {
+			"query": [],
+			"response": {
+				"format": "json-stat2"
+			}
+		};
+
+		// Make the API request
+		fetch(url, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify(jsonQuery)
+		})
+		.then(response => response.json())
+		.then(data => {
+			const dates = Object.values(data.dimension.Tid.category.label);
+			const valuesLen = data.value.length;
+			const half = Math.floor(valuesLen / 2);  // Ensure you're using floor() for proper slicing
+
+			const kpi_tot = data.value.slice(0, half);
+			const kpi_jae = data.value.slice(half, 2 * half);
+
+			//setting min and max year
+			document.getElementById('dateSlider').min = dates[0].substr(0, 4);
+			document.getElementById('dateSlider').max = dates[dates.length-1].substr(0, 4);
+
+			// calc difference:
+			function calculateDifferences(kpi) {
+				const diff = new Array(12).fill(null);
+				for (let i = 12; i < kpi.length; i++) {
+					if (kpi[i] !== null && kpi[i - 12] !== null) {
+						diff.push(100 * (kpi[i] - kpi[i - 12]) / kpi[i-12]);
+					} else {
+						diff.push(null);
+					}
+				}
+				return diff;
+			}
+
+			let kpi_jae_diff = calculateDifferences(kpi_jae);
+			let kpi_tot_diff = calculateDifferences(kpi_tot);
+			
+
+			// Identify indices where kpi_jae_diff has null values
+			const nullIndices = [];
+			for (let i = 0; i < kpi_jae_diff.length; i++) {
+				if (kpi_jae_diff[i] === null) {
+					nullIndices.push(i);
+				}
+			}
+
+			// Remove those indices from date, kpi_jae_diff, and kpi_tot_diff
+			for (let i = nullIndices.length - 1; i >= 0; i--) {
+				dates.splice(nullIndices[i], 1);
+				kpi_jae_diff.splice(nullIndices[i], 1);
+				kpi_tot_diff.splice(nullIndices[i], 1);
+			}
+			kpi_tot_diff = kpi_tot_diff.map(num => parseFloat((num).toFixed(1)));
+			kpi_jae_diff = kpi_jae_diff.map(num => parseFloat((num).toFixed(1)));
+
+
+			// Plotting with Plotly.js
+
+			
+			var layout = {
+				title: 'Kjerneinflasjon (KPI-JAE, sesongjustert) tolvmånedersendring',
+				yaxis: {
+					range: [0, 8]
+				},
+				legend: {
+					x: 0.05,  // Adjust these values as needed for your specific placement
+					y: 0.95,
+					xanchor: 'left',
+					yanchor: 'top',
+					bgcolor: 'rgba(255,255,255,0.7)' // Optional, makes legend slightly transparent
+				}
+			};
+			
+			const reversedDates = [...dates].reverse();
+			const reversedKpi_jae_diff = [...kpi_jae_diff].reverse();
+			var traceTable = {
+				type: 'table',
+				header: {
+					values: ['Date', 'Kjerneinflasjon (KPI-JAE, sesongjustert)'],
+					align: 'left',
+					line: {width: 1, color: 'black'},
+					fill: {color: '#d3d3d3'}
+				},
+				cells: {
+					values: [reversedDates, reversedKpi_jae_diff],
+					align: 'left',
+					line: {color: 'black', width: 1},
+					height: 30
+				}
+			};
+
+			var layoutTable = {
+				title: ''
+			};
+
+			Plotly.newPlot('dataTableContainer', [traceTable], layoutTable);  // Assumes you have another div with the id 'dataTableContainer' for the table
+			
+					
+			document.getElementById("dateSlider").addEventListener("input", function() {
+				// Get the selected year from the slider
+				const selectedYear = parseInt(this.value);
+
+				// Update the label to show the selected year
+				document.getElementById("sliderLabel").textContent = selectedYear;
+
+				// Filter the data based on the selected year
+				const filteredDates = dates.filter(date => parseInt(date.split("-")[0]) >= selectedYear);
+				const startIndex = dates.indexOf(filteredDates[0]);
+				const filtered_kpi_tot = kpi_tot_diff.slice(startIndex);
+				const filtered_kpi_jae = kpi_jae_diff.slice(startIndex);
+
+				// Update the plot with the filtered data
+				Plotly.newPlot('plotContainer', [{
+					x: filteredDates,
+					y: filtered_kpi_jae,
+					name: 'Kjerneinflasjon (KPI-JAE, sesongjustert)',
+					type: 'bar'
+				}, 
+				{
+					x: filteredDates,
+					y: Array(dates.length).fill(2.0),  // Creates an array of the same length as 'dates' filled with the value 5
+					type: 'scatter',
+					mode: 'lines',
+					name: 'Inflasjonsmål',
+					line: {
+						color: 'gray',
+						width: 1.5,
+						dash: 'dot'
+					}
+				}
+				], layout);
+			});
+
+			document.getElementById("dateSlider").dispatchEvent(new Event("input"));
+					
+	})
+
+	.catch(error => {
+				console.error("Error fetching or processing data:", error);
+			});
+
+
+
+
+
+	
+
+
+
+
+
+
+
+
+</script>
+
+</body>
+</html>
